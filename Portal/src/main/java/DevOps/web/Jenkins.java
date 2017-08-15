@@ -1,18 +1,14 @@
 package DevOps.web;
 
+import com.alibaba.fastjson.JSON;
+import com.fasterxml.jackson.databind.util.JSONPObject;
 import io.swagger.annotations.ApiOperation;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.util.Base64Utils;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
-
-
+import DevOps.domain.CrumbIssuer;
 /**
  * Created by Administrator on 2017/8/8.
  */
@@ -20,14 +16,34 @@ import org.springframework.web.client.RestTemplate;
 @RequestMapping("/jenkins")
 public class Jenkins {
 
+
+    @Value("${jenkins.cred}")
+    private String cred;
+
+    @Value("${jenkins.base_url}")
+    private String base_url;
+
     private HttpHeaders getHeader(){
-        String cred = "admin:admin";
+
         String base64Cred = Base64Utils.encodeToString(cred.getBytes());
 
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization", "Basic " + base64Cred);
 
         return headers;
+    }
+
+    private CrumbIssuer GetScrumb(){
+        RestTemplate rest = new RestTemplate();
+
+        HttpEntity<String> request = new HttpEntity<String>(getHeader());
+        ResponseEntity<String> res =  rest.exchange(base_url + "/crumbIssuer/api/json",
+                HttpMethod.GET, request, String.class);
+
+        CrumbIssuer crumbIssuer = JSON.parseObject(res.getBody().toString(), CrumbIssuer.class);
+
+        return crumbIssuer;
+
     }
 
     @RequestMapping(value = "/jobList", method = RequestMethod.GET)
@@ -37,23 +53,40 @@ public class Jenkins {
         RestTemplate rest = new RestTemplate();
 
         HttpEntity<String> request = new HttpEntity<String>(getHeader());
-        ResponseEntity<String> res =  rest.exchange("http://localhost:8081/job/demo/3/wfapi/describe",
+        ResponseEntity<String> res =  rest.exchange(base_url + "/api/json?tree=jobs[name]",
+                HttpMethod.GET, request, String.class);
+        return res.getBody().toString();
+
+    }
+
+    @RequestMapping(value = "/jobName", method = RequestMethod.GET)
+    @ApiOperation(value = "获取job详细信息", notes = "获取job详细信息")
+    public @ResponseBody String GetJob(String jobName){
+
+        RestTemplate rest = new RestTemplate();
+
+        HttpEntity<String> request = new HttpEntity<String>(getHeader());
+        ResponseEntity<String> res =  rest.exchange(base_url + "/job/" + jobName + "/api/json",
                 HttpMethod.GET, request, String.class);
         return res.getBody().toString();
 
     }
 
     @RequestMapping(value = "/jobName", method = RequestMethod.POST)
-    @ApiOperation(value = "执行job", notes = "执行指定名称的job")
-    public @ResponseBody String runJob(String jobName){
+    @ApiOperation(value = "执行job", notes = "执行job")
+    public @ResponseBody
+    HttpStatus runJob(@RequestBody String jobName){
 
-//        RestTemplate rest = new RestTemplate();
-//
-//        HttpEntity<String> request = new HttpEntity<String>(getHeader());
-//        ResponseEntity<String> res =  rest.exchange("http://localhost:8081/job/demo/",
-//                HttpMethod.POST, request, String.class);
-//        return res.getBody().toString();
+        RestTemplate rest = new RestTemplate();
 
-        return jobName;
+        HttpHeaders httpHeaders = getHeader();
+        CrumbIssuer crumbIssuer = GetScrumb();
+        httpHeaders.add(crumbIssuer.getCrumbRequestField(), crumbIssuer.getCrumb());
+
+        HttpEntity<String> request = new HttpEntity<String>(httpHeaders);
+        ResponseEntity<String> res =  rest.exchange(base_url + "/job/" + jobName + "/build",
+                HttpMethod.POST, request, String.class);
+
+        return res.getStatusCode();
     }
 }
