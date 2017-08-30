@@ -2,6 +2,10 @@ package DevOps.web;
 
 import com.alibaba.fastjson.JSON;
 import io.swagger.annotations.ApiOperation;
+import org.dom4j.Document;
+import org.dom4j.DocumentException;
+import org.dom4j.Element;
+import org.dom4j.io.SAXReader;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -19,6 +23,7 @@ import java.net.URLEncoder;
  */
 @RestController
 @RequestMapping("/jenkins")
+
 public class Jenkins {
 
 
@@ -177,4 +182,31 @@ public class Jenkins {
 
         return ResponseEntity.ok().headers(headers).contentType(MediaType.parseMediaType("application/zip")).body(resource);
     }
+
+    @RequestMapping(value = "/pipeline/new/{pipelineName}", method = RequestMethod.POST, produces = "application/json")
+    @ApiOperation(value="创建构建流水线", notes="创建构建流水线")
+    public @ResponseBody String createPipeline(@PathVariable("pipelineName") String pipelineName, @RequestBody String body) throws DocumentException {
+
+        RestTemplate rest = new RestTemplate();
+
+        HttpHeaders httpHeaders = getHeader();
+        CrumbIssuer crumbIssuer = GetScrumb();
+
+        httpHeaders.add("Content-Type", "text/xml");
+        httpHeaders.add(crumbIssuer.getCrumbRequestField(), crumbIssuer.getCrumb());
+
+        SAXReader saxReader = new SAXReader();
+        Document document = saxReader.read(new File("C:/Users/renlo/Desktop/github/DevOps-backend/Portal/src/main/resources/pipeline_templ"));
+        Element root = document.getRootElement();
+        Element script = root.element("definition").element("script");
+        script.setText(body);
+
+        HttpEntity<String> request = new HttpEntity<String>(document.asXML(), httpHeaders);
+
+        ResponseEntity<String> res =  rest.exchange(base_url + "/createItem?name=" + pipelineName,
+                HttpMethod.POST, request, String.class);
+        return res.getBody();
+
+    }
+
 }
